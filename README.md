@@ -70,7 +70,7 @@ The smoke configuration is intentionally tiny:
 {
   "$schema": "../suites/schema.json",
   "name": "smoke",
-  "cloud": { "server_type": "cpx11", "location": "fsn1", "image": "ubuntu-24.04" },
+  "cloud": { "server_type": "cpx12", "location": "fsn1", "image": "ubuntu-24.04" },
   "suite": "smoke",
   "profile": "smoke",
   "workload": { "name": "smoke", "scale_factor": 1, "queries": [] },

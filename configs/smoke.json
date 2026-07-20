@@ -2,7 +2,7 @@
   "$schema": "../suites/schema.json",
   "name": "smoke",
   "cloud": {
-    "server_type": "cpx11",
+    "server_type": "cpx12",
     "location": "fsn1",
     "image": "ubuntu-24.04"
   },
