@@ -181,7 +181,9 @@ publish_results() {
   git -C "$ROOT" check-ref-format --branch "$branch" >/dev/null || fail "invalid publish branch: $branch"
   current_branch="$(git -C "$ROOT" branch --show-current)"
   [ "$current_branch" = "$branch" ] || fail "publish branch is $branch, but the checked-out branch is ${current_branch:-detached}"
-  git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet || fail "working tree changed while benchmark was running"
+  git -C "$ROOT" diff --quiet -- . ':(exclude)results' \
+    && git -C "$ROOT" diff --cached --quiet -- . ':(exclude)results' \
+    || fail "working tree changed outside results while benchmark was running"
 
   git -C "$ROOT" add results/README.md
   git -C "$ROOT" add -f "$result_dir"
