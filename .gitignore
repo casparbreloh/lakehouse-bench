@@ -1,0 +1,4 @@
+.bench/
+out/
+results/*/
+!results/README.md

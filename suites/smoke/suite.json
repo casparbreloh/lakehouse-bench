@@ -1,0 +1,5 @@
+{
+  "name": "smoke",
+  "service": "smoke",
+  "profiles": ["smoke"]
+}
