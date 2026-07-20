@@ -1,5 +1,3 @@
 # Benchmark results
 
-Published benchmark runs are added here by `./bench.sh <config>`. Each run contains a GitHub-rendered summary and a machine-readable `result.json` file.
-
-No benchmark runs have been published yet.
+- [20260720t125047z-smoke-3be9c2a](./20260720t125047z-smoke-3be9c2a/) — smoke / smoke
