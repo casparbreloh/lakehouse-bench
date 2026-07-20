@@ -1,0 +1,12 @@
+#cloud-config
+package_update: true
+
+runcmd:
+  - >-
+    /bin/bash -c 'set -Eeuo pipefail;
+    mkdir -p /var/lib/lakehouse-bench;
+    apt-get install --yes docker.io docker-compose-v2;
+    systemctl enable --now docker;
+    docker version >/var/lib/lakehouse-bench/docker-version.txt 2>&1;
+    docker compose version >>/var/lib/lakehouse-bench/docker-version.txt 2>&1;
+    touch /var/lib/lakehouse-bench/ready'

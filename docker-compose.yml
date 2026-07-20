@@ -1,0 +1,10 @@
+services:
+  smoke:
+    build:
+      context: ./suites/smoke
+    profiles: ["smoke"]
+    environment:
+      BENCH_CONFIG: ${BENCH_CONFIG:-/workspace/configs/smoke.json}
+    volumes:
+      - ./:/workspace:ro
+      - ./out:/out
