@@ -18,6 +18,6 @@
     "iterations": 1
   },
   "publish": {
-    "branch": "main"
+    "branch": "feat/lakehouse-bench-bootstrap"
   }
 }
