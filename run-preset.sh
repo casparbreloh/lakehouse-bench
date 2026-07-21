@@ -28,7 +28,8 @@ TOPOLOGY="$(jq -r '.topology' "$PRESET")"
 FILE_FORMAT="$(jq -r '.storage.file_format' "$PRESET")"
 TABLE_FORMAT="$(jq -r '.storage.table_format' "$PRESET")"
 validate_tool() {
-  local tool=$1 kind=$2 formats=$3 manifest="$ROOT/tools/$tool/tool.json"
+  local tool=$1 kind=$2 formats=$3 manifest
+  manifest="$ROOT/tools/$tool/tool.json"
   [ -f "$manifest" ] || fail "tool manifest not found: $manifest"
   jq -e --arg tool "$tool" --arg kind "$kind" --arg topology "$TOPOLOGY" --argjson formats "$formats" '
     .name == $tool and .kind == $kind and .topology == [$topology] and .formats == $formats
