@@ -8,8 +8,6 @@ ARG TPCH_KIT_REF=852ad0a5ee31ebefeed884cea4188781dd9613a3
 ENV SPARK_HOME=/opt/spark
 ENV PATH=/opt/spark/bin:$PATH
 ENV PYSPARK_PYTHON=/usr/bin/python3
-ENV PYTHONPATH=/opt/lakehouse-bench/src:/opt/spark/python:/opt/spark/python/lib/py4j-0.10.9.7-src.zip
-
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       build-essential ca-certificates curl git jq python3 python3-pip && \
     rm -rf /var/lib/apt/lists/* && \
@@ -26,4 +24,5 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       'datafusion==51.0.0' 'pyiceberg==0.11.1' 'pyiceberg-core==0.8.0' 'pyarrow==17.0.0'
 
 COPY src /opt/lakehouse-bench/src
+ENV PYTHONPATH=/opt/lakehouse-bench/src:/opt/spark/python:/opt/spark/python/lib/py4j-0.10.9.7-src.zip
 ENTRYPOINT ["python3", "-m", "lakehouse_bench.runner"]
