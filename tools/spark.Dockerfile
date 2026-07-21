@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM python:3.12-slim-bookworm AS base
+FROM python:3.11-slim-bookworm AS base
 
 ARG PYSPARK_VERSION=3.5.8
 ARG ICEBERG_VERSION=1.7.1

@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bookworm
+FROM python:3.11-slim-bookworm
 ARG DUCKDB_VERSION=1.1.3
 RUN --mount=type=cache,target=/root/.cache/pip pip install "duckdb==${DUCKDB_VERSION}"
 RUN python -c 'import duckdb; duckdb.connect().execute("INSTALL tpch")'
