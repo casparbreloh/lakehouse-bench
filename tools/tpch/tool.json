@@ -1,0 +1,1 @@
+{"name":"tpch","kind":"workload","topology":["single-node"],"formats":["parquet"],"build_target":"tpch","image":"lakehouse-bench/tpch:latest"}

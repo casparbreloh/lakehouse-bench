@@ -1,0 +1,1 @@
+{"name":"iceberg-parquet","kind":"storage","topology":["single-node"],"formats":["iceberg","parquet"],"build_target":"iceberg-parquet","image":"lakehouse-bench/iceberg-parquet:latest"}

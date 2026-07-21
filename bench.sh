@@ -71,14 +71,10 @@ compose_has_service() {
 }
 
 preset_service() {
-  local workload=$1 profile=$2 service
-  case "$profile" in
-    smoke) service=smoke ;;
-    benchmark) service=benchmark ;;
-    *) fail "preset profile has no Compose service" ;;
-  esac
-  compose_has_service "$profile" "$service" || fail "service is not enabled by Compose profile $profile: $service"
-  printf '%s\n' "$service"
+  local profile=$1
+  [ "$profile" = "smoke" ] || return 0
+  compose_has_service smoke smoke || fail "smoke service is not enabled by Compose"
+  printf 'smoke\n'
 }
 
 wait_for_ready() {
@@ -211,7 +207,7 @@ main() {
 
   [ "$(dirname "$preset")" = "$ROOT/presets" ] && [[ "$preset_base" =~ ^[a-z0-9][a-z0-9-]*\.json$ ]] \
     || fail "preset must be a safely named file directly inside presets/"
-  service="$(preset_service "$workload" "$profile")"
+  service="$(preset_service "$profile")"
   git -C "$ROOT" check-ref-format --branch "$(preset_value "$preset" '.publish.branch')" >/dev/null \
     || fail "invalid publish branch"
   git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet || fail "commit or stash changes before running"
@@ -252,9 +248,15 @@ main() {
       "root@$server_ip" 'rm -rf /root/lakehouse-bench && mkdir -p /root/lakehouse-bench/out && tar -xf - -C /root/lakehouse-bench'
 
   note "running workload $workload"
-  ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$state_dir/known_hosts" \
-    "root@$server_ip" \
-    "cd /root/lakehouse-bench && BENCH_PRESET=/workspace/$preset_rel COMPOSE_PROJECT_NAME=lakehouse-bench-$run_id docker compose --profile $profile run --rm $service"
+  if [ "$profile" = "smoke" ]; then
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$state_dir/known_hosts" \
+      "root@$server_ip" \
+      "cd /root/lakehouse-bench && COMPOSE_PROJECT_NAME=lakehouse-bench-$run_id docker compose --profile smoke run --build --rm $service"
+  else
+    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$state_dir/known_hosts" \
+      "root@$server_ip" \
+      "cd /root/lakehouse-bench && ./run-preset.sh $preset_rel"
+  fi
 
   note "collecting result"
   scp -q -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$state_dir/known_hosts" \

@@ -1,23 +1,29 @@
 # Lakehouse Bench
 
-A small container-first harness for reusable lakehouse benchmark definitions. Global adapters live in `src/lakehouse_bench/`: engines, table formats, file formats, workloads, the supported-combination registry, and one preset-driven runner. `spark-local` and `spark-comet-local` explicitly mean single-node Spark adapters; native `datafusion` is single-process by definition. Future clustered engines are separate adapters, not implicit modes.
+A small OCI tool-plugin harness for fair, single-node lakehouse comparisons. Each selected component has one declarative manifest in [`tools/`](./tools): its name, kind, supported topology/formats, Bake target, and image. Tool images are independent; there is no all-engines image or Docker-socket container.
 
-## Presets and containers
+## Included comparison
 
-`presets/` selects a workload, storage, engines, profile/topology, execution threads/warmups/iterations, and cloud/publish settings. `presets/schema.json` rejects malformed presets and the registry rejects unsupported combinations. The smoke preset intentionally selects no storage or engines. The TPC-H preset selects Iceberg/Parquet with `spark-local`, native `datafusion`, and `spark-comet-local`.
+[`presets/tpch-iceberg-parquet-single-node-sf1.json`](./presets/tpch-iceberg-parquet-single-node-sf1.json) is intentionally the only normal selection: TPC-H Q1, Iceberg v2/Parquet, `spark-local`, `datafusion`, and `spark-comet-local`, on one node with four threads. The only execution controls are scale factor, threads, warmups, and iterations.
 
-There are only two Compose services: `smoke` and the generic `benchmark`. For single-node runs, every adapter receives the preset's `execution.threads`: Spark uses `local[N]`; DataFusion uses N partitions and Rayon threads.
-
-## Local smoke check
+`run-preset.sh` validates that immutable selection, uses `docker buildx bake --load` to build only its five tool images, runs the TPC-H and Iceberg setup containers before timing, then runs engine containers sequentially over shared `.bench-data` and `out` mounts. Engines warm up and measure inside their own process, emit compact JSON, and the orchestrator refuses differing checksums before writing `out/result.json`.
 
 ```sh
-docker compose --profile smoke run --rm smoke
+./run-preset.sh presets/tpch-iceberg-parquet-single-node-sf1.json
+```
+
+Tool dependencies are pinned Python packages and pinned Maven jars; BuildKit cache mounts accelerate package installation. No Spark tarballs, source builds, or git clones are used.
+
+## Smoke
+
+The Compose smoke service remains the stable local/remote result contract:
+
+```sh
+docker compose --profile smoke run --build --rm smoke
 jq . out/result.json
 ```
 
-## Run on Hetzner
-
-The launcher requires `hcloud`, Docker Compose, Git, Bash, and jq. Set an existing Hetzner SSH key, commit the source, then run a preset:
+## Hetzner
 
 ```sh
 export HCLOUD_SSH_KEY=my-ssh-key
@@ -25,6 +31,4 @@ export HCLOUD_SSH_KEY=my-ssh-key
 # ./bench.sh presets/tpch-iceberg-parquet-single-node-sf1.json
 ```
 
-`bench.sh` validates the preset and its supported profile mapping, creates and labels a VM, archives the committed revision, runs the selected generic service, collects `out/result.json`, writes and publishes a result bundle, and deletes the VM only after a successful push. On failure it retains the VM for inspection.
-
-Generated local data is `.bench-data/`; container output is `out/`; both are ignored. Published runs are tracked under [`results/`](./results/).
+`bench.sh` archives the committed revision to the VM. Smoke uses Compose; normal runs invoke `run-preset.sh`. It collects `out/result.json`, publishes the result bundle, then deletes the VM only after a successful push. On failure the VM is retained for inspection.

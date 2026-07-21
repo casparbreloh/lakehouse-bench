@@ -1,24 +1,9 @@
 services:
+  # Kept as the stable, fast smoke result contract for local and HCloud checks.
   smoke:
     build:
       context: .
       dockerfile: containers/smoke/Dockerfile
     profiles: ["smoke"]
-    environment:
-      BENCH_PRESET: ${BENCH_PRESET:-/workspace/presets/smoke.json}
     volumes:
-      - ./:/workspace:ro
-      - ./out:/out
-
-  benchmark:
-    build:
-      context: .
-      dockerfile: containers/benchmark/Dockerfile
-    profiles: ["benchmark"]
-    environment:
-      BENCH_PRESET: ${BENCH_PRESET:-/workspace/presets/tpch-iceberg-parquet-single-node-sf1.json}
-      BENCH_DATA: /data
-    volumes:
-      - ./:/workspace:ro
-      - ./.bench-data:/data
       - ./out:/out

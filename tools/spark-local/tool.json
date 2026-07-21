@@ -1,0 +1,1 @@
+{"name":"spark-local","kind":"engine","topology":["single-node"],"formats":["iceberg","parquet"],"build_target":"spark-local","image":"lakehouse-bench/spark-local:latest"}

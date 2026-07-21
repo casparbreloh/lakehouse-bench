@@ -1,0 +1,1 @@
+{"name":"datafusion","kind":"engine","topology":["single-node"],"formats":["iceberg","parquet"],"build_target":"datafusion","image":"lakehouse-bench/datafusion:latest"}
