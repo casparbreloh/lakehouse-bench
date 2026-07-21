@@ -1,10 +1,24 @@
 services:
   smoke:
     build:
-      context: ./suites/smoke
+      context: .
+      dockerfile: containers/smoke/Dockerfile
     profiles: ["smoke"]
     environment:
-      BENCH_CONFIG: ${BENCH_CONFIG:-/workspace/configs/smoke.json}
+      BENCH_PRESET: ${BENCH_PRESET:-/workspace/presets/smoke.json}
     volumes:
       - ./:/workspace:ro
+      - ./out:/out
+
+  benchmark:
+    build:
+      context: .
+      dockerfile: containers/benchmark/Dockerfile
+    profiles: ["benchmark"]
+    environment:
+      BENCH_PRESET: ${BENCH_PRESET:-/workspace/presets/tpch-iceberg-parquet-single-node-sf1.json}
+      BENCH_DATA: /data
+    volumes:
+      - ./:/workspace:ro
+      - ./.bench-data:/data
       - ./out:/out

@@ -1,0 +1,10 @@
+{
+  "$schema": "schema.json",
+  "name": "smoke",
+  "cloud": {"server_type": "cpx12", "location": "fsn1", "image": "ubuntu-24.04"},
+  "workload": {"name": "smoke", "scale_factor": 1, "queries": []},
+  "profile": "smoke",
+  "topology": "single-node",
+  "execution": {"threads": 1, "warmups": 0, "iterations": 1},
+  "publish": {"branch": "main"}
+}

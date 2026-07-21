@@ -1,4 +1,7 @@
 .bench/
+.bench-data/
 out/
 results/*/
 !results/README.md
+__pycache__/
+*.py[cod]

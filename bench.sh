@@ -19,7 +19,7 @@ require() {
 }
 
 usage() {
-  printf 'usage: %s <config.json>\n' "${0##*/}" >&2
+  printf 'usage: %s <preset.json>\n' "${0##*/}" >&2
   exit 2
 }
 
@@ -30,16 +30,14 @@ is_allowed_keys() {
     'type == "object" and ((keys - $allowed) | length == 0)' <<<"$json" >/dev/null
 }
 
-validate_config() {
-  local config=$1 json
-  json="$(jq -ce . "$config")" || fail "invalid JSON: $config"
+validate_preset() {
+  local preset=$1 json
+  json="$(jq -ce . "$preset")" || fail "invalid JSON: $preset"
 
-  is_allowed_keys "$json" '$schema' name cloud suite profile workload execution publish || fail "config has unknown keys"
+  is_allowed_keys "$json" '$schema' name cloud workload storage engines profile topology execution publish || fail "preset has unknown keys"
   jq -e '
-    ."$schema" == "../suites/schema.json"
-    and (.name | type == "string" and test("^[a-z0-9][a-z0-9-]{0,38}$"))
-    and (.suite | type == "string" and test("^[a-z0-9][a-z0-9-]{0,62}$"))
-    and (.profile as $profile | ["smoke", "engine-execution", "end-to-end", "distributed"] | index($profile) != null)
+    ."$schema" == "schema.json"
+    and (.name | type == "string" and test("^[a-z0-9][a-z0-9-]{0,62}$"))
     and (.cloud | type == "object" and ([keys[]] | sort) == ["image", "location", "server_type"])
     and (.cloud.server_type | type == "string" and test("^[a-z0-9-]+$"))
     and (.cloud.location | type == "string" and test("^[a-z0-9-]+$"))
@@ -47,17 +45,20 @@ validate_config() {
     and (.workload | type == "object" and ([keys[]] | sort) == ["name", "queries", "scale_factor"])
     and (.workload.name | type == "string" and test("^[a-z0-9][a-z0-9-]{0,62}$"))
     and (.workload.scale_factor | type == "number" and floor == . and . >= 1 and . <= 100000)
-    and (.workload.queries | type == "array" and length == (unique | length)
-         and all(.[]; type == "string" and test("^q([1-9]|1[0-9]|2[0-2])$")))
-    and (.execution | type == "object" and ([keys[]] | sort) == ["iterations", "warmups"])
+    and (.workload.queries | type == "array" and length == (unique | length) and all(.[]; type == "string" and test("^q([1-9]|1[0-9]|2[0-2])$")))
+    and (.profile as $profile | ["smoke", "benchmark"] | index($profile) != null)
+    and (.topology == "single-node")
+    and (.execution | type == "object" and ([keys[]] | sort) == ["iterations", "threads", "warmups"])
+    and (.execution.threads | type == "number" and floor == . and . >= 1 and . <= 1024)
     and (.execution.warmups | type == "number" and floor == . and . >= 0 and . <= 100)
     and (.execution.iterations | type == "number" and floor == . and . >= 1 and . <= 100)
     and (.publish | type == "object" and ([keys[]] | sort) == ["branch"])
     and (.publish.branch | type == "string" and test("^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$"))
-  ' "$config" >/dev/null || fail "config does not match suites/schema.json"
+    and (if .profile == "smoke" then .workload.name == "smoke" and (has("storage") | not) and (has("engines") | not) and .workload.queries == [] else (.storage | type == "object" and ([keys[]] | sort) == ["file_format", "table_format"] and (.table_format | type == "string" and test("^[a-z0-9][a-z0-9-]{0,62}$")) and (.file_format | type == "string" and test("^[a-z0-9][a-z0-9-]{0,62}$"))) and (.engines | type == "array" and length > 0 and length == (unique | length) and all(.[]; type == "string" and test("^[a-z0-9][a-z0-9-]{0,62}$"))) end)
+  ' "$preset" >/dev/null || fail "preset does not match presets/schema.json or supported registry combinations"
 }
 
-config_value() {
+preset_value() {
   jq -er "$2" "$1"
 }
 
@@ -69,26 +70,14 @@ compose_has_service() {
   return 1
 }
 
-suite_value() {
-  jq -er "$2" "$1"
-}
-
-validate_suite() {
-  local suite=$1 profile=$2 manifest service
-  manifest="$ROOT/suites/$suite/suite.json"
-  [ -f "$manifest" ] || fail "suite manifest not found: suites/$suite/suite.json"
-  jq -e '
-    type == "object"
-    and ([keys[]] | sort) == ["name", "profiles", "service"]
-    and (.name | type == "string")
-    and (.service | type == "string" and test("^[a-z0-9][a-z0-9-]{0,62}$"))
-    and (.profiles | type == "array" and length > 0 and all(.[]; type == "string"))
-  ' "$manifest" >/dev/null || fail "invalid suite manifest: $manifest"
-  [ "$(suite_value "$manifest" '.name')" = "$suite" ] || fail "suite manifest name does not match directory"
-  jq -e --arg profile "$profile" '.profiles | index($profile) != null' "$manifest" >/dev/null \
-    || fail "suite $suite does not support profile $profile"
-  service="$(suite_value "$manifest" '.service')"
-  compose_has_service "$profile" "$service" || fail "suite service is not enabled by Compose profile $profile: $service"
+preset_service() {
+  local workload=$1 profile=$2 service
+  case "$profile" in
+    smoke) service=smoke ;;
+    benchmark) service=benchmark ;;
+    *) fail "preset profile has no Compose service" ;;
+  esac
+  compose_has_service "$profile" "$service" || fail "service is not enabled by Compose profile $profile: $service"
   printf '%s\n' "$service"
 }
 
@@ -107,14 +96,14 @@ wait_for_ready() {
 }
 
 render_result() {
-  local config=$1 suite_result=$2 result_dir=$3 run_id=$4 source_revision=$5 server_id=$6 server_type=$7 location=$8 image=$9 expected_suite=${10}
+  local preset=$1 runner_result=$2 result_dir=$3 run_id=$4 source_revision=$5 server_id=$6 server_type=$7 location=$8 image=$9 expected_workload=${10}
   local result_json="$result_dir/result.json"
   local summary="$result_dir/README.md"
 
-  jq -e --arg expected_suite "$expected_suite" '
+  jq -e --arg expected_workload "$expected_workload" '
     type == "object"
     and (.status == "success")
-    and (.suite == $expected_suite)
+    and (.workload == $expected_workload)
     and (.measurements | type == "array" and length > 0)
     and all(.measurements[];
       type == "object"
@@ -123,7 +112,7 @@ render_result() {
       and (.duration_ms | type == "number" and . >= 0)
       and (.result_checksum | type == "string")
     )
-  ' "$suite_result" >/dev/null || fail "suite did not produce a valid successful result"
+  ' "$runner_result" >/dev/null || fail "runner did not produce a valid successful result"
 
   jq -n \
     --arg run_id "$run_id" \
@@ -133,28 +122,28 @@ render_result() {
     --arg location "$location" \
     --arg image "$image" \
     --arg collected_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --slurpfile config "$config" \
-    --slurpfile suite_result "$suite_result" \
+    --slurpfile preset "$preset" \
+    --slurpfile runner_result "$runner_result" \
     '{
       run_id: $run_id,
       collected_at: $collected_at,
       source_revision: $source_revision,
       cloud: {server_id: $server_id, server_type: $server_type, location: $location, image: $image},
-      config: $config[0],
-      suite_result: $suite_result[0]
+      preset: $preset[0],
+      runner_result: $runner_result[0]
     }' >"$result_json"
 
   {
-    printf '# %s\n\n' "$(config_value "$config" '.name')"
+    printf '# %s\n\n' "$(preset_value "$preset" '.name')"
     printf -- '- Run ID: `%s`\n' "$run_id"
-    printf -- '- Suite: `%s`\n' "$(config_value "$config" '.suite')"
-    printf -- '- Profile: `%s`\n' "$(config_value "$config" '.profile')"
+    printf -- '- Workload: `%s`\n' "$(preset_value "$preset" '.workload.name')"
+    printf -- '- Profile: `%s`\n' "$(preset_value "$preset" '.profile')"
     printf -- '- Source revision: `%s`\n' "$source_revision"
     printf -- '- VM: Hetzner `%s` in `%s` (`%s`)\n' "$server_type" "$location" "$server_id"
     printf -- '- Collected: %s\n\n' "$(jq -r '.collected_at' "$result_json")"
     printf '## Measurements\n\n'
     printf '| Name | Status | Duration | Checksum |\n|---|---|---:|---|\n'
-    jq -r '.suite_result.measurements[] | [.name, .status, (.duration_ms | tostring) + " ms", .result_checksum] | @tsv' "$result_json" |
+    jq -r '.runner_result.measurements[] | [.name, .status, (.duration_ms | tostring) + " ms", .result_checksum] | @tsv' "$result_json" |
       while IFS=$'\t' read -r name status duration checksum; do
         printf '| %s | %s | %s | `%s` |\n' "$name" "$status" "$duration" "$checksum"
       done
@@ -163,9 +152,9 @@ render_result() {
 }
 
 update_results_index() {
-  local run_id=$1 config=$2
+  local run_id=$1 preset=$2
   local index="$ROOT/results/README.md"
-  local entry="- [${run_id}](./${run_id}/) — $(config_value "$config" '.suite') / $(config_value "$config" '.profile')"
+  local entry="- [${run_id}](./${run_id}/) — $(preset_value "$preset" '.workload.name') / $(preset_value "$preset" '.profile')"
 
   if grep -q '^No benchmark runs have been published yet\.$' "$index"; then
     printf '# Benchmark results\n\n%s\n' "$entry" >"$index"
@@ -175,9 +164,9 @@ update_results_index() {
 }
 
 publish_results() {
-  local result_dir=$1 config=$2
+  local result_dir=$1 preset=$2
   local branch current_branch
-  branch="$(config_value "$config" '.publish.branch')"
+  branch="$(preset_value "$preset" '.publish.branch')"
   git -C "$ROOT" check-ref-format --branch "$branch" >/dev/null || fail "invalid publish branch: $branch"
   current_branch="$(git -C "$ROOT" branch --show-current)"
   [ "$current_branch" = "$branch" ] || fail "publish branch is $branch, but the checked-out branch is ${current_branch:-detached}"
@@ -194,14 +183,14 @@ publish_results() {
 main() {
   [ "$#" -eq 1 ] || usage
 
-  local config_input=$1 config config_base config_rel
-  config="$(cd "$(dirname "$config_input")" && pwd)/$(basename "$config_input")"
-  config_base="$(basename "$config")"
-  case "$config" in
+  local preset_input=$1 preset preset_base preset_rel
+  preset="$(cd "$(dirname "$preset_input")" && pwd)/$(basename "$preset_input")"
+  preset_base="$(basename "$preset")"
+  case "$preset" in
     "$ROOT"/*) ;;
-    *) fail "config must be inside the repository" ;;
+    *) fail "preset must be inside the repository" ;;
   esac
-  [ -f "$config" ] || fail "config not found: $config_input"
+  [ -f "$preset" ] || fail "preset not found: $preset_input"
 
   require hcloud
   require docker
@@ -209,25 +198,25 @@ main() {
   require bash
   require jq
   docker compose version >/dev/null 2>&1 || fail "Docker Compose plugin is required"
-  validate_config "$config"
+  validate_preset "$preset"
 
-  local suite service profile server_type location image name source_revision config_status
-  suite="$(config_value "$config" '.suite')"
-  profile="$(config_value "$config" '.profile')"
-  server_type="$(config_value "$config" '.cloud.server_type')"
-  location="$(config_value "$config" '.cloud.location')"
-  image="$(config_value "$config" '.cloud.image')"
-  name="$(config_value "$config" '.name')"
-  config_rel="${config#"$ROOT"/}"
+  local workload service profile server_type location image name source_revision preset_status
+  workload="$(preset_value "$preset" '.workload.name')"
+  profile="$(preset_value "$preset" '.profile')"
+  server_type="$(preset_value "$preset" '.cloud.server_type')"
+  location="$(preset_value "$preset" '.cloud.location')"
+  image="$(preset_value "$preset" '.cloud.image')"
+  name="$(preset_value "$preset" '.name')"
+  preset_rel="${preset#"$ROOT"/}"
 
-  [ "$(dirname "$config")" = "$ROOT/configs" ] && [[ "$config_base" =~ ^[a-z0-9][a-z0-9-]*\.json$ ]] \
-    || fail "config must be a safely named file directly inside configs/"
-  service="$(validate_suite "$suite" "$profile")"
-  git -C "$ROOT" check-ref-format --branch "$(config_value "$config" '.publish.branch')" >/dev/null \
+  [ "$(dirname "$preset")" = "$ROOT/presets" ] && [[ "$preset_base" =~ ^[a-z0-9][a-z0-9-]*\.json$ ]] \
+    || fail "preset must be a safely named file directly inside presets/"
+  service="$(preset_service "$workload" "$profile")"
+  git -C "$ROOT" check-ref-format --branch "$(preset_value "$preset" '.publish.branch')" >/dev/null \
     || fail "invalid publish branch"
   git -C "$ROOT" diff --quiet && git -C "$ROOT" diff --cached --quiet || fail "commit or stash changes before running"
-  config_status="$(git -C "$ROOT" status --porcelain --untracked-files=all)"
-  [ -z "$config_status" ] || fail "commit or remove untracked files before running"
+  preset_status="$(git -C "$ROOT" status --porcelain --untracked-files=all)"
+  [ -z "$preset_status" ] || fail "commit or remove untracked files before running"
   source_revision="$(git -C "$ROOT" rev-parse HEAD)"
   [ -n "${HCLOUD_SSH_KEY:-}" ] || fail "set HCLOUD_SSH_KEY to an existing Hetzner SSH key name or ID"
 
@@ -262,23 +251,23 @@ main() {
     ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$state_dir/known_hosts" \
       "root@$server_ip" 'rm -rf /root/lakehouse-bench && mkdir -p /root/lakehouse-bench/out && tar -xf - -C /root/lakehouse-bench'
 
-  note "running suite $suite"
+  note "running workload $workload"
   ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$state_dir/known_hosts" \
     "root@$server_ip" \
-    "cd /root/lakehouse-bench && BENCH_CONFIG=/workspace/$config_rel COMPOSE_PROJECT_NAME=lakehouse-bench-$run_id docker compose --profile $profile run --rm $service"
+    "cd /root/lakehouse-bench && BENCH_PRESET=/workspace/$preset_rel COMPOSE_PROJECT_NAME=lakehouse-bench-$run_id docker compose --profile $profile run --rm $service"
 
   note "collecting result"
   scp -q -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$state_dir/known_hosts" \
-    "root@$server_ip:/root/lakehouse-bench/out/result.json" "$state_dir/suite-result.json"
+    "root@$server_ip:/root/lakehouse-bench/out/result.json" "$state_dir/runner-result.json"
 
   local result_dir
   result_dir="$ROOT/results/$run_id"
   mkdir -p "$result_dir"
-  render_result "$config" "$state_dir/suite-result.json" "$result_dir" "$run_id" "$source_revision" "$server_id" "$server_type" "$location" "$image" "$suite"
-  update_results_index "$run_id" "$config"
+  render_result "$preset" "$state_dir/runner-result.json" "$result_dir" "$run_id" "$source_revision" "$server_id" "$server_type" "$location" "$image" "$workload"
+  update_results_index "$run_id" "$preset"
 
   note "publishing results"
-  publish_results "$result_dir" "$config"
+  publish_results "$result_dir" "$preset"
 
   note "published; deleting server $server_id"
   hcloud server delete "$server_id"

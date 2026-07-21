@@ -1,0 +1,12 @@
+{
+  "$schema": "schema.json",
+  "name": "tpch-iceberg-parquet-single-node-sf1",
+  "cloud": {"server_type": "cpx42", "location": "fsn1", "image": "ubuntu-24.04"},
+  "workload": {"name": "tpch", "scale_factor": 1, "queries": ["q1"]},
+  "storage": {"table_format": "iceberg", "file_format": "parquet"},
+  "engines": ["spark-local", "datafusion", "spark-comet-local"],
+  "profile": "benchmark",
+  "topology": "single-node",
+  "execution": {"threads": 4, "warmups": 1, "iterations": 3},
+  "publish": {"branch": "main"}
+}
