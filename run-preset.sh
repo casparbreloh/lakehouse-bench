@@ -49,7 +49,7 @@ run_tool() {
   local tool=$1 engine=${2:-}
   local image; image="$(jq -r .image "$ROOT/tools/$tool/tool.json")"
   local args=(docker run --rm -e "BENCH_PRESET=/workspace/$REL" -e BENCH_DATA=/data)
-  if [ -n "$engine" ]; then args+=(--network none -e "BENCH_ENGINE=$engine"); fi
+  if [ -n "$engine" ]; then args+=(-e "BENCH_ENGINE=$engine"); fi
   args+=(-v "$ROOT:/workspace:ro" -v "$DATA:/data" -v "$OUT:/out" "$image")
   "${args[@]}"
 }
