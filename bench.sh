@@ -98,7 +98,7 @@ run_remote_preset() {
 
   note "starting remote run; tailing $host:$run_dir/run.log (timeout: ${timeout_seconds}s)"
   ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$known_hosts" "root@$host" \
-    "cd /root/lakehouse-bench && mkdir -p '$run_dir' && rm -f '$run_dir/run.status' '$run_dir/run.log' && nohup sh -c './run-preset.sh $preset_rel > $run_dir/run.log 2>&1; printf \"%s\\n\" \"\\\$?\" > $run_dir/run.status' >/dev/null 2>&1 &"
+    "cd /root/lakehouse-bench && mkdir -p '$run_dir' && rm -f '$run_dir/run.status' '$run_dir/run.log' && nohup sh -c './run-preset.sh $preset_rel > $run_dir/run.log 2>&1; printf \"%s\\n\" \"\$?\" > $run_dir/run.status' >/dev/null 2>&1 &"
 
   while [ "$elapsed" -lt "$timeout_seconds" ]; do
     if exit_code="$(ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$known_hosts" "root@$host" "test -f '$run_dir/run.status' && cat '$run_dir/run.status'" 2>/dev/null)"; then
