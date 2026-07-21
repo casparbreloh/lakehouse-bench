@@ -91,6 +91,28 @@ wait_for_ready() {
   return 1
 }
 
+run_remote_preset() {
+  local host=$1 known_hosts=$2 run_dir=$3 preset_rel=$4 run_id=$5 timeout_seconds=${BENCH_RUN_TIMEOUT_SECONDS:-3600}
+  local elapsed=0 exit_code
+  [[ "$timeout_seconds" =~ ^[1-9][0-9]*$ ]] || fail "BENCH_RUN_TIMEOUT_SECONDS must be a positive integer"
+
+  note "starting remote run; tailing $host:$run_dir/run.log (timeout: ${timeout_seconds}s)"
+  ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$known_hosts" "root@$host" \
+    "cd /root/lakehouse-bench && mkdir -p '$run_dir' && rm -f '$run_dir/run.status' '$run_dir/run.log' && nohup sh -c './run-preset.sh $preset_rel > $run_dir/run.log 2>&1; printf \"%s\\n\" \"\\\$?\" > $run_dir/run.status' >/dev/null 2>&1 &"
+
+  while [ "$elapsed" -lt "$timeout_seconds" ]; do
+    if exit_code="$(ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$known_hosts" "root@$host" "test -f '$run_dir/run.status' && cat '$run_dir/run.status'" 2>/dev/null)"; then
+      ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$known_hosts" "root@$host" "tail -n 80 '$run_dir/run.log'" || true
+      [ "$exit_code" = "0" ] || fail "remote benchmark failed (exit $exit_code); inspect: ssh root@$host 'tail -f $run_dir/run.log'"
+      return 0
+    fi
+    ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$known_hosts" "root@$host" "tail -n 30 '$run_dir/run.log'" 2>/dev/null || true
+    sleep 15
+    elapsed=$((elapsed + 15))
+  done
+  fail "remote benchmark exceeded ${timeout_seconds}s; it is still running. Inspect: ssh root@$host 'tail -f $run_dir/run.log'"
+}
+
 render_result() {
   local preset=$1 runner_result=$2 result_dir=$3 run_id=$4 source_revision=$5 server_id=$6 server_type=$7 location=$8 image=$9 expected_workload=${10}
   local result_json="$result_dir/result.json"
@@ -253,9 +275,7 @@ main() {
       "root@$server_ip" \
       "cd /root/lakehouse-bench && COMPOSE_PROJECT_NAME=lakehouse-bench-$run_id docker compose --profile smoke run --build --rm $service"
   else
-    ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$state_dir/known_hosts" \
-      "root@$server_ip" \
-      "cd /root/lakehouse-bench && ./run-preset.sh $preset_rel"
+    run_remote_preset "$server_ip" "$state_dir/known_hosts" "/root/lakehouse-bench/.run-$run_id" "$preset_rel" "$run_id"
   fi
 
   note "collecting result"
